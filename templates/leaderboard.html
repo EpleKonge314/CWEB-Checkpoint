@@ -1,0 +1,117 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Leaderboard — Aplegoetia</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+  <style>
+    #scoreTable {
+      width: 100%;
+      max-width: 600px;
+      margin: 2rem auto;
+      border-collapse: collapse;
+      background: #fff;
+      border-radius: 6px;
+      overflow: hidden;
+    }
+    th, td {
+      padding: 12px;
+      text-align: left;
+      border-bottom: 1px solid #ddd;
+    }
+    th {
+      background: #333;
+      color: #fff;
+    }
+    h1 {
+      text-align: center;
+      margin-top: calc(var(--header-height) + 40px);
+    }
+  </style>
+</head>
+<body>
+  <header class="site-header">
+    <div class="site-title">Applegoetia</div>
+    <div class="header-controls">
+      <div class="dropdown">
+        <button class="dropdown-btn">Menu</button>
+        <div class="dropdown-content">
+          <a href="/">Messages</a>
+          <a href="/canvas">Play</a>
+          <a href="/leaderboard">Leaderboard</a>
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <h1>Top Survivors</h1>
+  <table id="scoreTable">
+    <thead>
+      <tr><th>#</th><th>Username</th><th>Time (s)</th></tr>
+    </thead>
+    <tbody id="scoreBody"></tbody>
+  </table>
+
+  <script>
+    async function loadScores() {
+      try {
+        const res = await fetch('/scores');
+        const scores = await res.json();
+        const body = document.getElementById('scoreBody');
+        body.innerHTML = '';
+        scores.forEach((s, i) => {
+          const row = document.createElement('tr');
+          row.innerHTML = `
+            <td>${i + 1}</td>
+            <td>${s.username}</td>
+            <td>${s.survival_time.toFixed(2)}</td>`;
+          body.appendChild(row);
+        });
+      } catch (err) {
+        console.error('Failed to load scores', err);
+      }
+    }
+    window.addEventListener('DOMContentLoaded', loadScores);
+    const username = localStorage.getItem('USERNAME') || (usernameEl ? usernameEl.value.trim() || 'Anonymous' : 'Anonymous');
+  </script>
+  {% extends "headFoot.html" %}
+
+{% block title %}Leaderboard — Applegoetia{% endblock %}
+
+{% block content %}
+  <h1 style="text-align:center;margin-top:calc(var(--header-height) + 40px);">Top Survivors</h1>
+  <table id="scoreTable">
+    <thead>
+      <tr><th>#</th><th>Username</th><th>Time (s)</th></tr>
+    </thead>
+    <tbody id="scoreBody"></tbody>
+  </table>
+{% endblock %}
+
+{% block scripts %}
+  <script>
+    async function loadScores() {
+      try {
+        const res = await fetch('/scores');
+        const scores = await res.json();
+        const body = document.getElementById('scoreBody');
+        body.innerHTML = '';
+        scores.forEach((s, i) => {
+          const row = document.createElement('tr');
+          row.innerHTML = `
+            <td>${i + 1}</td>
+            <td>${s.username}</td>
+            <td>${s.survival_time.toFixed(2)}</td>`;
+          body.appendChild(row);
+        });
+      } catch (err) {
+        console.error('Failed to load scores', err);
+      }
+    }
+    window.addEventListener('DOMContentLoaded', loadScores);
+  </script>
+{% endblock %}
+
+</body>
+</html>

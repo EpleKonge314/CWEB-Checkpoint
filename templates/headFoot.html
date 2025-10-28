@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>{% block title %}Applegoetia{% endblock %}</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+  {% block extra_head %}{% endblock %}
+</head>
+
+<body>
+  <!--  Site Header  -->
+  <header class="site-header">
+    <div class="site-title">Applegoetia</div>
+    <div class="header-controls">
+      <div id="profileDisplay" class="profile-display" title="Click to change name"></div>
+      <div class="dropdown">
+        <button class="dropdown-btn">Menu</button>
+        <div class="dropdown-content">
+          <a href="/">Messages</a>
+          <a href="/canvas">Play</a>
+          <a href="/leaderboard">Leaderboard</a>
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <!-- Main Page Content  -->
+  {% block content %}{% endblock %}
+
+  <footer style="text-align:center; margin-top:2rem; color:#666; font-size:12px;">
+    <p>&copy; 2025 Applegoetia</p>
+  </footer>
+
+  <!--  Shared Profile JS  -->
+<!-- this is something i find strange that it does this differently -->
+  <script>
+  (function () {
+    const key = 'USERNAME';
+    const profileEl = document.getElementById('profileDisplay');
+
+    function getUsername() {
+      let name = localStorage.getItem(key);
+      if (!name) {
+        name = prompt('Enter a display name:')?.trim() || 'Anonymous';
+        localStorage.setItem(key, name);
+      }
+      return name;
+    }
+
+    function refreshDisplay() {
+      profileEl.textContent = getUsername();
+    }
+
+    profileEl.addEventListener('click', () => {
+      const newName = prompt('Enter a new display name:')?.trim();
+      if (newName) {
+        localStorage.setItem(key, newName);
+        refreshDisplay();
+      }
+    });
+
+    refreshDisplay();
+
+    // Auto-sync across open tabs//
+    window.addEventListener('storage', (e) => {
+      if (e.key === key) refreshDisplay();
+    });
+  })();
+  </script>
+
+  {% block scripts %}{% endblock %}
+</body>
+</html>
+

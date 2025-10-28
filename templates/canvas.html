@@ -1,0 +1,84 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Aplegoetia</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+
+    <style>
+        canvas {
+            border: 1px solid black;
+            display: block;
+            margin: auto;
+            position: relative;
+            overflow: hidden;
+        }
+        
+    </style>
+</head>
+
+<body>
+    {% extends "headFoot.html" %}
+
+{% block title %}Play — Applegoetia{% endblock %}
+
+{% block content %}
+  <div id="gameWrapper">
+    <div id="gameContainer">
+      <canvas id="gameCanvas" width="1600" height="800"></canvas>
+      <div id="gameHUD">
+        <div id="timer">0.00s</div>
+        <div><button id="playAgain" onclick="resetGame()">Play Again</button></div>
+      </div>
+    </div>
+  </div>
+{% endblock %}
+
+{% block scripts %}
+  <script src="{{ url_for('static', filename='game.js') }}"></script>
+{% endblock %}
+
+    <br>
+    <br>
+    <br>
+    <div id="gameWrapper">
+        <div id="gameContainer">
+            <canvas id="gameCanvas" width="1600" height="800"></canvas>
+
+            <div id="gameHUD">
+                <div id="timer">0.00s</div>
+                <div>
+                    <button id="playAgain" onclick="resetGame()">Play Again</button>
+                </div>
+            </div>
+        </div>
+
+
+     
+        <script src="{{ url_for('static', filename='game.js') }}"></script>
+        <div id="movableObject"></div>
+        <script>
+            // Inline movement script //
+            const movableObject = document.getElementById('movableObject');
+            let position = { top: 150, left: 150 };
+            // Init pos//
+
+        </script>
+
+        <script>
+            // initialize admin token for maybe getting a header for this game?//
+            (function () {
+                const el = document.getElementById('adminTokenInput');
+                if (!el) return;
+                const stored = localStorage.getItem('ADMIN_TOKEN');
+                if (stored) el.value = stored;
+                el.addEventListener('input', (e) => {
+                    localStorage.setItem('ADMIN_TOKEN', e.target.value);
+                });
+            })();
+        </script>
+</body>
+
+</html>
