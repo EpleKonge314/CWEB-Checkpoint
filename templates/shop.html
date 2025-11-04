@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Aplegoetia — Shop</title>
+
+  <!-- Main Site Styles -->
+  <link rel="stylesheet" href="{{ url_for('static', filename='style/style.css') }}">
+  <!-- Shop-specific Styles -->
+  <link rel="stylesheet" href="{{ url_for('static', filename='style/shop.css') }}">
+</head>
+<body>
+
+  <!-- Shared Header -->
+  <header class="site-header">
+    <div class="site-title">Aplegoetia</div>
+    <div class="header-controls">
+      <div id="profileDisplay" class="profile-display" title="Click to change name"></div>
+      <div class="dropdown">
+        <button class="dropdown-btn">Menu</button>
+        <div class="dropdown-content">
+          <a href="/">Messages</a>
+          <a href="/canvas">Play</a>
+          <a href="/leaderboard">Leaderboard</a>
+          <a href="/shop">Shop</a>
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <!-- Main Content -->
+  <main class="shop-container">
+    <h1>In-Game Shop</h1>
+
+    <section class="shop-coins">
+      <h2>Your Balance</h2>
+      <div id="coinDisplay">💰 <span id="coinCount">0</span> coins</div>
+    </section>
+
+    <section class="shop-items">
+      <h2>Available Items</h2>
+      <div class="shop-grid">
+        {% for item in items %}
+        <div class="shop-item" data-key="{{ item.key }}">
+          <img src="{{ item.img }}" alt="{{ item.display_name }}">
+          <div class="item-info">
+            <strong>{{ item.display_name }}</strong>
+            <p>Price: {{ item.price }} coins</p>
+          </div>
+          <button class="buy-btn" data-key="{{ item.key }}">Buy</button>
+        </div>
+        {% endfor %}
+      </div>
+    </section>
+  </main>
+
+  <!-- JS (you can expand it later for buying/equipping logic) -->
+  <script src="{{ url_for('static', filename='js/shop.js') }}"></script>
+</body>
+</html>

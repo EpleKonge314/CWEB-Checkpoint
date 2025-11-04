@@ -1,15 +1,73 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>{% block title %}Aplegoetia{% endblock %}</title>
   <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
-  {% block extra_head %}{% endblock %}
+  {% block head %}{% endblock %}
+  <style>
+    .site-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      background: #222;
+      color: #fff;
+      padding: 10px 20px;
+      height: var(--header-height, 60px);
+    }
+    .site-title {
+      font-size: 1.5em;
+      font-weight: bold;
+    }
+    .header-controls {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    .profile-display {
+      cursor: pointer;
+      background: #444;
+      padding: 6px 10px;
+      border-radius: 4px;
+    }
+    .dropdown {
+      position: relative;
+    }
+    .dropdown-btn {
+      background: #333;
+      color: white;
+      border: none;
+      padding: 6px 10px;
+      border-radius: 4px;
+      cursor: pointer;
+    }
+    .dropdown-content {
+      display: none;
+      position: absolute;
+      right: 0;
+      background: #444;
+      box-shadow: 0 2px 5px rgba(0,0,0,0.3);
+      border-radius: 4px;
+      overflow: hidden;
+      z-index: 10;
+    }
+    .dropdown-content a {
+      display: block;
+      padding: 8px 12px;
+      color: white;
+      text-decoration: none;
+    }
+    .dropdown-content a:hover {
+      background: #555;
+    }
+    .dropdown:hover .dropdown-content {
+      display: block;
+    }
+  </style>
 </head>
-
 <body>
-  <!--  Site Header  -->
+
   <header class="site-header">
     <div class="site-title">Aplegoetia</div>
     <div class="header-controls">
@@ -20,55 +78,41 @@
           <a href="/">Messages</a>
           <a href="/canvas">Play</a>
           <a href="/leaderboard">Leaderboard</a>
+          <a href="/shop">Shop</a>
         </div>
       </div>
     </div>
   </header>
 
-  <!-- Main Page Content  -->
-  {% block content %}{% endblock %}
-
-  <footer style="text-align:center; margin-top:2rem; color:#666; font-size:12px;">
-    <p>&copy; 2025 Aplegoetia</p>
-  </footer>
-
-  <!--  Shared Profile JS  -->
-<!-- this is something i find strange that it does this differently -->
-  <script>
-  (function () {
-    const key = 'USERNAME';
-    const profileEl = document.getElementById('profileDisplay');
-
-    function getUsername() {
-      let name = localStorage.getItem(key);
-      if (!name) {
-        name = prompt('Enter a display name:')?.trim() || 'Anonymous';
-        localStorage.setItem(key, name);
-      }
-      return name;
-    }
-
-    function refreshDisplay() {
-      profileEl.textContent = getUsername();
-    }
-
-    profileEl.addEventListener('click', () => {
-      const newName = prompt('Enter a new display name:')?.trim();
-      if (newName) {
-        localStorage.setItem(key, newName);
-        refreshDisplay();
-      }
-    });
-
-    refreshDisplay();-
-    // Auto-sync across open tabs//
-    window.addEventListener('storage', (e) => {
-      if (e.key === key) refreshDisplay();
-    });
-  })();
-  </script>
+  <main>
+    {% block content %}{% endblock %}
+  </main>
 
   {% block scripts %}{% endblock %}
+
+  <script>
+    document.addEventListener("DOMContentLoaded", () => {
+      let username = localStorage.getItem("USERNAME");
+
+      if (!username) {
+        username = prompt("Enter your username:")?.trim() || "Anonymous";
+        localStorage.setItem("USERNAME", username);
+      }
+
+      const profileDisplay = document.getElementById("profileDisplay");
+      if (profileDisplay) {
+        profileDisplay.textContent = username;
+        profileDisplay.addEventListener("click", () => {
+          const newName = prompt("Change your username:", username);
+          if (newName && newName.trim()) {
+            username = newName.trim();
+            localStorage.setItem("USERNAME", username);
+            profileDisplay.textContent = username;
+          }
+        });
+      }
+    });
+  </script>
+
 </body>
 </html>
-

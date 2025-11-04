@@ -115,3 +115,40 @@
 
 </body>
 </html>
+<script>
+document.addEventListener("DOMContentLoaded", async () => {
+  const username = localStorage.getItem("USERNAME") || "Anonymous";
+  
+  async function loadScores() {
+    try {
+      const res = await fetch("/scores");
+      const scores = await res.json();
+      const body = document.getElementById("scoreBody");
+      body.innerHTML = "";
+
+      scores.forEach((s, i) => {
+        const row = document.createElement("tr");
+
+        // Highlight current user's personal best
+        if (s.username === username) {
+          row.style.background = "#e0f7fa";
+          row.style.fontWeight = "bold";
+        }
+
+        row.innerHTML = `
+          <td>${i + 1}</td>
+          <td>${s.username}</td>
+          <td>${Number(s.survival_time).toFixed(2)}</td>
+        `;
+        body.appendChild(row);
+      });
+    } catch (err) {
+      console.error("Failed to load scores", err);
+      const body = document.getElementById("scoreBody");
+      body.innerHTML = '<tr><td colspan="3" style="text-align:center;">⚠️ Error loading leaderboard</td></tr>';
+    }
+  }
+
+  loadScores();
+});
+</script>
