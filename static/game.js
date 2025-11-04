@@ -1,5 +1,11 @@
+// Core Setup //
 const canvas = document.getElementById('gameCanvas');
 const ctx = canvas.getContext('2d');
+
+const powerups = [];
+let shieldActive = false;
+let invincible = false;
+let invincibleTimer = null;
 
 // Player //
 const player = {
@@ -11,16 +17,17 @@ const player = {
   dx: 0,
   dy: 0
 };
+
 canvas.tabIndex = 0;
 canvas.focus();
 canvas.addEventListener('click', () => canvas.focus());
 
-
-// Enemy groups //
+// Enemies //
 const enemies = [];
 const enemiesFast = [];
 const enemiesSlow = [];
 
+// Game state //
 let gameStart = null;
 let gameOver = false;
 let paused = false;
@@ -29,70 +36,28 @@ let spawnIntervalId = null;
 let pauseStart = 0;
 let totalPausedTime = 0;
 let survivalTime = 0;
+let lastGreenSpawn = 0;
 
-// Enemy creation //
+// Enemy Creation & Spawning //
 function createEnemy(type = 'normal') {
-  let size;
-  let speed;
-  let color;
-
+  let size, speed, color;
   switch (type) {
-    case 'fast':
-      speed = 5;
-      color = 'pink';
-      size = 10;
-      break;
-    case 'slow':
-      speed = 2;
-      color = 'green';
-      size = 50;
-      break;
-    default:
-      speed = 3;
-      color = 'red';
-      size = 15;
+    case 'fast': speed = 5; color = 'pink'; size = 10; break;
+    case 'slow': speed = 2; color = 'green'; size = 75; break;
+    default: speed = 3; color = 'red'; size = 15;
   }
-let lastGreenSpawn = 0
-  // Spawn at random edge //
+
   const edge = Math.floor(Math.random() * 4);
   let x, y;
   switch (edge) {
-    case 0: x = Math.random() * canvas.width; y = 0; break; // top //
-    case 1: x = canvas.width - size; y = Math.random() * canvas.height; break; // right //
-    case 2: x = Math.random() * canvas.width; y = canvas.height - size; break; // bottom //
-    default: x = 0; y = Math.random() * canvas.height; break; // left //
+    case 0: x = Math.random() * canvas.width; y = 0; break;
+    case 1: x = canvas.width - size; y = Math.random() * canvas.height; break;
+    case 2: x = Math.random() * canvas.width; y = canvas.height - size; break;
+    default: x = 0; y = Math.random() * canvas.height; break;
   }
 
   return { x, y, width: size, height: size, speed, color };
 }
-if (!gameStart) gameStart = performance.now();
-
-function spawnEnemyAtEdge() {
-  const elapsed = (performance.now() - gameStart - totalPausedTime) / 1000;
-
-  // Always spawn normal enemies //
-  enemies.push(createEnemy('normal'));
-  if (elapsed >= 50 && elapsed < 50 + 0.1) showAnnouncement('Fast enemies incoming!');
-  if (elapsed >= 100 && elapsed < 100 + 0.1) showAnnouncement('Heavy enemies joined!');
-
-  // After 50s, also spawn fast ones //
-  if (elapsed >= 50) {
-    enemiesFast.push(createEnemy('fast'));
-  }
-
-  // After 100s, start spawning slow ones every 100s //
-  if (elapsed >= 100) {
-    // How many 100s intervals have passed since 100s mark //
-    const intervals = Math.floor((elapsed - 100) / 100) + 1;
-
-    // Ensure the number of slow enemies matches intervals //
-    while (enemiesSlow.length < intervals) {
-      enemiesSlow.push(createEnemy('slow'));
-      lastGreenSpawn = elapsed;
-    }
-  }
-}
-spawnIntervalId = setInterval(spawnEnemyAtEdge, 5000);
 
 function showAnnouncement(text) {
   const msg = document.createElement('div');
@@ -113,76 +78,61 @@ function showAnnouncement(text) {
   setTimeout(() => msg.remove(), 2000);
 }
 
+function spawnEnemyAtEdge() {
+  const elapsed = (performance.now() - gameStart - totalPausedTime) / 1000;
 
+  let multiplier = 1;
+  if (elapsed >= 300) multiplier = 10;
+  else if (elapsed >= 60) multiplier = 3;
+  else if (elapsed >= 30) multiplier = 2;
 
-// Movement Controls //
-window.addEventListener('keydown', (e) => {
-  if (['ArrowUp','ArrowDown','ArrowLeft','ArrowRight','w','a','s','d','Escape'].includes(e.key)) {
-    e.preventDefault();
+  for (let i = 0; i < multiplier; i++) enemies.push(createEnemy('normal'));
+
+  if (elapsed >= 50 && elapsed < 50.1) showAnnouncement('Fast enemies incoming!');
+  if (elapsed >= 100 && elapsed < 100.1) showAnnouncement('Heavy enemies incoming!');
+
+  if (elapsed >= 50) enemiesFast.push(createEnemy('fast'));
+
+  if (elapsed >= 100) {
+    const intervals = Math.floor((elapsed - 100) / 100) + 1;
+    while (enemiesSlow.length < intervals) {
+      enemiesSlow.push(createEnemy('slow'));
+      lastGreenSpawn = elapsed;
+    }
   }
-});
+}
 
-document.addEventListener('keydown', (e) => {
-  if (gameOver) return;
-
-  if (e.key === 'ArrowRight' || e.key === 'd') player.dx = player.speed;
-  if (e.key === 'ArrowLeft' || e.key === 'a') player.dx = -player.speed;
-  if (e.key === 'ArrowUp' || e.key === 'w') player.dy = -player.speed;
-  if (e.key === 'ArrowDown' || e.key === 's') player.dy = player.speed;
-
-  // Pause toggle on ESC //
-  if (e.key === 'Escape') {
-    togglePause();
-  }
-});
-
-document.addEventListener('keyup', (e) => {
-  if (['ArrowRight', 'ArrowLeft', 'd', 'a'].includes(e.key)) player.dx = 0;
-  if (['ArrowUp', 'ArrowDown', 'w', 's'].includes(e.key)) player.dy = 0;
-});
-
-// Updates //
+// Movement & Collision //
 function updatePlayer() {
   player.x += player.dx;
   player.y += player.dy;
-
-  // keep inside canvas //
   player.x = Math.max(0, Math.min(canvas.width - player.width, player.x));
   player.y = Math.max(0, Math.min(canvas.height - player.height, player.y));
 }
 
 function moveEnemies(list, allEnemies) {
-  // Move enemies toward player //
   for (const e of list) {
     const dx = (player.x + player.width / 2) - (e.x + e.width / 2);
     const dy = (player.y + player.height / 2) - (e.y + e.height / 2);
     const dist = Math.hypot(dx, dy) || 1;
     e.x += (dx / dist) * e.speed;
     e.y += (dy / dist) * e.speed;
-
-    // keep inside canvas//
     e.x = Math.max(0, Math.min(canvas.width - e.width, e.x));
     e.y = Math.max(0, Math.min(canvas.height - e.height, e.y));
   }
 
-  // Prevent overlapping (enemy bumping)//
   const all = allEnemies.flat();
   for (let i = 0; i < all.length; i++) {
     for (let j = i + 1; j < all.length; j++) {
       const a = all[i];
       const b = all[j];
-
       const dx = (b.x + b.width / 2) - (a.x + a.width / 2);
       const dy = (b.y + b.height / 2) - (a.y + a.height / 2);
       const dist = Math.hypot(dx, dy);
-
-      // Only push apart if overlapping//
       if (dist < (a.width + b.width) / 2) {
         const overlap = ((a.width + b.width) / 2 - dist) / 2;
         const nx = dx / dist || 0;
         const ny = dy / dist || 0;
-
-        // Move each enemy slightly apart//
         a.x -= nx * overlap;
         a.y -= ny * overlap;
         b.x += nx * overlap;
@@ -191,6 +141,7 @@ function moveEnemies(list, allEnemies) {
     }
   }
 }
+
 function rectsOverlap(a, b) {
   return !(a.x + a.width < b.x ||
            a.x > b.x + b.width ||
@@ -202,15 +153,133 @@ function checkCollisions() {
   return [...enemies, ...enemiesFast, ...enemiesSlow].some(e => rectsOverlap(player, e));
 }
 
-// Drawing -not good enough an explaination, too tired, fix later- //
+// Powerups (Adaptive) //
+function createPowerup(type) {
+  const x = Math.random() * (canvas.width - 30);
+  const y = Math.random() * (canvas.height - 30);
+  return {
+    x, y,
+    type,
+    radius: 15,
+    pulse: 0,
+    opacity: 1,
+    spawnTime: performance.now()
+  };
+}
+
+function getPowerupSpawnChance() {
+  const elapsed = (performance.now() - gameStart - totalPausedTime) / 1000;
+  let baseChance = 0.3;
+  if (elapsed > 180) baseChance = 0.7;
+  else if (elapsed > 60) baseChance = 0.5;
+  return baseChance;
+}
+
+function pickPowerupType() {
+  const elapsed = (performance.now() - gameStart - totalPausedTime) / 1000;
+  let shieldBias = 0.5;
+  if (elapsed > 60 && elapsed <= 120) shieldBias = 0.65;
+  if (elapsed > 120) shieldBias = 0.4;
+  return Math.random() < shieldBias ? 'shield' : 'bomb';
+}
+
+function spawnPowerup() {
+  if (gameOver || paused) return;
+  const chance = Math.random();
+  const spawnChance = getPowerupSpawnChance();
+  if (chance > spawnChance) return;
+
+  const type = pickPowerupType();
+  powerups.push(createPowerup(type));
+  console.log("Powerup spawned:", type);
+}
+
+function scheduleNextPowerup() {
+  if (gameOver) return;
+  const elapsed = (performance.now() - gameStart - totalPausedTime) / 1000;
+  let baseDelay = 25000;
+  if (elapsed > 180) baseDelay = 15000;
+  else if (elapsed > 60) baseDelay = 20000;
+
+  spawnPowerup();
+  setTimeout(scheduleNextPowerup, baseDelay + Math.random() * 5000);
+}
+
+function updatePowerups() {
+  const now = performance.now();
+  for (let i = powerups.length - 1; i >= 0; i--) {
+    const p = powerups[i];
+    const age = (now - p.spawnTime) / 1000;
+    if (age > 10) {
+      p.opacity -= 0.05;
+      if (p.opacity <= 0) {
+        powerups.splice(i, 1);
+        continue;
+      }
+    }
+    p.pulse += 0.1;
+  }
+}
+
+function checkPowerupCollisions() {
+  for (let i = powerups.length - 1; i >= 0; i--) {
+    const p = powerups[i];
+    const dist = Math.hypot(
+      (player.x + player.width / 2) - p.x,
+      (player.y + player.height / 2) - p.y
+    );
+    if (dist < p.radius + player.width / 2) {
+      if (p.type === 'shield') {
+        shieldActive = true;
+        showAnnouncement('Shield Activated!');
+      } else if (p.type === 'bomb') {
+        enemies.length = enemiesFast.length = enemiesSlow.length = 0;
+        showAnnouncement('BOOM! Enemies Cleared!');
+      }
+      powerups.splice(i, 1);
+    }
+  }
+}
+
+function drawPowerups() {
+  for (const p of powerups) {
+    const scale = 1 + Math.sin(p.pulse) * 0.2;
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, p.radius * scale, 0, Math.PI * 2);
+    ctx.lineWidth = 3;
+    ctx.strokeStyle =
+      p.type === 'shield'
+        ? `rgba(173, 216, 230, ${p.opacity})`
+        : `rgba(255, 165, 0, ${p.opacity})`;
+    ctx.stroke();
+  }
+}
+
+// Invincibility //
+function startInvincibility(duration) {
+  clearTimeout(invincibleTimer);
+  invincible = true;
+
+  let flicker = true;
+  const flickerInterval = setInterval(() => {
+    flicker = !flicker;
+    ctx.globalAlpha = flicker ? 0.5 : 1;
+  }, 100);
+
+  invincibleTimer = setTimeout(() => {
+    invincible = false;
+    clearInterval(flickerInterval);
+    ctx.globalAlpha = 1;
+  }, duration);
+}
+
+// Drawing & HUD //
 function draw() {
   ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-  // Player //
   ctx.fillStyle = 'blue';
   ctx.fillRect(player.x, player.y, player.width, player.height);
 
-  // Enemies //
   for (const list of [enemies, enemiesFast, enemiesSlow]) {
     for (const e of list) {
       ctx.fillStyle = e.color;
@@ -218,7 +287,16 @@ function draw() {
     }
   }
 
-  // If paused, draw overlay text //
+  drawPowerups();
+
+  if (shieldActive) {
+    ctx.beginPath();
+    ctx.arc(player.x + player.width / 2, player.y + player.height / 2, player.width, 0, Math.PI * 2);
+    ctx.strokeStyle = 'lightblue';
+    ctx.lineWidth = 4;
+    ctx.stroke();
+  }
+
   if (paused && !gameOver) {
     ctx.fillStyle = 'rgba(0,0,0,0.5)';
     ctx.fillRect(0, 0, canvas.width, canvas.height);
@@ -229,7 +307,6 @@ function draw() {
   }
 }
 
-// Game Loop //
 function updateHud() {
   const timerEl = document.getElementById('timer');
   if (!timerEl) return;
@@ -237,59 +314,104 @@ function updateHud() {
   timerEl.textContent = t.toFixed(2) + 's';
 }
 
+// Game Over Overlay //
 function showGameOverOverlay() {
+  const container = document.getElementById('gameContainer');
+  const shade = document.createElement('div');
+  shade.id = 'gameShade';
+  container.appendChild(shade);
+
   const box = document.createElement('div');
   box.id = 'gameOverBox';
   box.innerHTML = `
     <div class="title">Game Over</div>
     <div class="survivedText">Survived: ${survivalTime.toFixed(2)}s</div>
     <button id="playAgainOverlay">Play Again</button>`;
-  document.getElementById('gameContainer').appendChild(box);
+  container.appendChild(box);
 
-  document.getElementById('playAgainOverlay').addEventListener('click', resetGame);
+  document.getElementById('playAgainOverlay').addEventListener('click', () => {
+    shade.remove();
+    box.remove();
+    resetGame();
+  });
 }
 
+// Main Loop //
 function gameLoop() {
   if (!gameStart) gameStart = performance.now();
   if (!gameOver && !paused) {
     updatePlayer();
+    updatePowerups();
+    checkPowerupCollisions();
+
     const allEnemies = [enemies, enemiesFast, enemiesSlow];
     moveEnemies(enemies, allEnemies);
     moveEnemies(enemiesFast, allEnemies);
     moveEnemies(enemiesSlow, allEnemies);
 
-
-if (checkCollisions()) {
-  gameOver = true;
-  survivalTime = (performance.now() - gameStart - totalPausedTime) / 1000;
-  clearInterval(spawnIntervalId);
-
-  // Send score //
-  sendScore(survivalTime);
-
-  showGameOverOverlay();
-  return;
-}
-
+    if (checkCollisions()) {
+      if (invincible) {
+        // Ignore collisions during invincibility
+      } else if (shieldActive) {
+        shieldActive = false;
+        invincible = true;
+        showAnnouncement('Shield Absorbed the Hit!');
+        startInvincibility(1000); // 1s of invincibility
+      } else {
+        gameOver = true;
+        survivalTime = (performance.now() - gameStart - totalPausedTime) / 1000;
+        clearInterval(spawnIntervalId);
+        sendScore(survivalTime);
+        showGameOverOverlay();
+        return;
+      }
+    }
 
     draw();
     updateHud();
     rafId = requestAnimationFrame(gameLoop);
   } else if (paused) {
-    draw(); // still draw overlay when paused //
+    draw();
   }
 }
 
-// Controls & Reset  //
+// Controls //
+window.addEventListener('keydown', (e) => {
+  if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'w', 'a', 's', 'd', 'Escape'].includes(e.key))
+    e.preventDefault();
+});
+
+canvas.addEventListener('keydown', (e) => {
+  if (gameOver) return;
+  switch (e.key) {
+    case 'ArrowRight':
+    case 'd': player.dx = player.speed; break;
+    case 'ArrowLeft':
+    case 'a': player.dx = -player.speed; break;
+    case 'ArrowUp':
+    case 'w': player.dy = -player.speed; break;
+    case 'ArrowDown':
+    case 's': player.dy = player.speed; break;
+    case 'Escape': e.preventDefault(); togglePause(); break;
+  }
+});
+
+canvas.addEventListener('keyup', (e) => {
+  if (['ArrowRight', 'ArrowLeft', 'd', 'a'].includes(e.key)) player.dx = 0;
+  if (['ArrowUp', 'ArrowDown', 'w', 's'].includes(e.key)) player.dy = 0;
+});
+
+//  Pause & Reset //
 function togglePause() {
   if (gameOver) return;
   paused = !paused;
+  console.log("Pause toggled:", paused);
 
   if (paused) {
     pauseStart = performance.now();
     clearInterval(spawnIntervalId);
     cancelAnimationFrame(rafId);
-    draw(); // show paused overlay immediately //
+    draw();
   } else {
     totalPausedTime += performance.now() - pauseStart;
     spawnIntervalId = setInterval(spawnEnemyAtEdge, 10000);
@@ -300,30 +422,28 @@ function togglePause() {
 
 function resetGame() {
   document.getElementById('gameOverBox')?.remove();
-  enemies.length = 0;
-  enemiesFast.length = 0;
-  enemiesSlow.length = 0;
+  enemies.length = enemiesFast.length = enemiesSlow.length = powerups.length = 0;
 
   player.x = canvas.width / 2 - player.width / 2;
   player.y = canvas.height / 2 - player.height / 2;
   player.dx = 0;
   player.dy = 0;
 
-  gameStart = null;
+  gameStart = performance.now();
   gameOver = false;
   paused = false;
   totalPausedTime = 0;
-
-
-  lastGreenSpawn = 0;    // Reset green spawn timer //
-  pauseStart = 0;        // Reset pause timing //
-  
-  if (!gameStart) gameStart = performance.now();
+  lastGreenSpawn = 0;
+  pauseStart = 0;
+  invincible = false;
 
   spawnEnemyAtEdge();
   spawnIntervalId = setInterval(spawnEnemyAtEdge, 10000);
   rafId = requestAnimationFrame(gameLoop);
+  canvas.focus();
 }
+
+// Score Sending //
 async function sendScore(time) {
   try {
     const usernameEl = document.getElementById('usernameInput');
@@ -346,28 +466,4 @@ spawnEnemyAtEdge();
 spawnIntervalId = setInterval(spawnEnemyAtEdge, 10000);
 rafId = requestAnimationFrame(gameLoop);
 setInterval(updateHud, 100);
-function showGameOverOverlay() {
-  const container = document.getElementById('gameContainer');
-
-  // Create the dark shade //
-  const shade = document.createElement('div');
-  shade.id = 'gameShade';
-  container.appendChild(shade);
-
-  // Create the game over box //
-  const box = document.createElement('div');
-  box.id = 'gameOverBox';
-  box.innerHTML = `
-    <div class="title">Game Over</div>
-    <div class="survivedText">Survived: ${survivalTime.toFixed(2)}s</div>
-    <button id="playAgainOverlay">Play Again</button>
-  `;
-  container.appendChild(box);
-
-  // Add button behavior //
-  document.getElementById('playAgainOverlay').addEventListener('click', () => {
-    shade.remove();
-    box.remove();
-    resetGame();
-  });
-}
+scheduleNextPowerup();

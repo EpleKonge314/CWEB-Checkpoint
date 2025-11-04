@@ -388,3 +388,15 @@ main,
   cursor: pointer;
   pointer-events: auto;
 }
+/* Powerup glow pulse */
+@keyframes pulseGlow {
+  0% { box-shadow: 0 0 6px 2px rgba(173, 216, 230, 0.4); }
+  50% { box-shadow: 0 0 12px 6px rgba(173, 216, 230, 0.8); }
+  100% { box-shadow: 0 0 6px 2px rgba(173, 216, 230, 0.4); }
+}
+
+@keyframes bombGlow {
+  0% { box-shadow: 0 0 6px 2px rgba(255, 165, 0, 0.4); }
+  50% { box-shadow: 0 0 12px 6px rgba(255, 165, 0, 0.8); }
+  100% { box-shadow: 0 0 6px 2px rgba(255, 165, 0, 0.4); }
+}
