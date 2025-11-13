@@ -4,8 +4,8 @@
 const canvas = document.getElementById('gameCanvas');
 const ctx = canvas.getContext('2d');
 
-// Single canonical username used across pages
 const PLAYER_NAME = localStorage.getItem("USERNAME") || "Anonymous";
+const username = PLAYER_NAME; // alias kept for compatibility
 
 // Game entities
 const powerups = [];
@@ -28,7 +28,7 @@ let survivalTime = 0;
 let lastGreenSpawn = 0;
 let coinCount = 0;
 
-// Player
+// Player setup
 const player = {
   x: canvas.width / 2 - 25,
   y: canvas.height / 2 - 25,
@@ -45,29 +45,23 @@ const player = {
 let playerSkinImg = null;
 let enemySkinImg = null;
 
-// Fetch equipped skins from backend
 async function loadEquippedSkins() {
   try {
-    // use PLAYER_NAME (canonical)
     const res = await fetch(`/api/shop/user?username=${encodeURIComponent(PLAYER_NAME)}`);
     const data = await res.json();
-
     const resItems = await fetch("/api/shop/items");
-    const items = await resItems.json(); // items is an array
+    const items = await resItems.json();
 
-    // Player skin
     if (data.player_skin && data.player_skin !== "default") {
       const skinItem = items.find(i => i.key === data.player_skin);
-      if (skinItem && skinItem.img) {
+      if (skinItem?.img) {
         playerSkinImg = new Image();
         playerSkinImg.src = skinItem.img;
       }
     }
-
-    // Enemy skin
     if (data.enemy_skin && data.enemy_skin !== "default") {
       const skinItem = items.find(i => i.key === data.enemy_skin);
-      if (skinItem && skinItem.img) {
+      if (skinItem?.img) {
         enemySkinImg = new Image();
         enemySkinImg.src = skinItem.img;
       }
@@ -77,9 +71,17 @@ async function loadEquippedSkins() {
   }
 }
 
+// ===============================
+// 🧱 Canvas Config
+// ===============================
 canvas.tabIndex = 0;
 canvas.focus();
 canvas.addEventListener('click', () => canvas.focus());
+
+// NOTE: `chosenName` may be defined externally (keep for compatibility)
+if (typeof chosenName !== "undefined") {
+  localStorage.setItem("USERNAME", chosenName);
+}
 
 // ===============================
 // 👾 Enemy Creation & Spawning
@@ -104,85 +106,34 @@ function createEnemy(type = 'normal') {
   return { x, y, width: size, height: size, speed, color };
 }
 
-function showAnnouncement(text) {
-  const msg = document.createElement('div');
-  msg.textContent = text;
-  Object.assign(msg.style, {
-    position: 'absolute',
-    top: '40%',
-    left: '50%',
-    transform: 'translate(-50%, -50%)',
-    background: 'rgba(0,0,0,0.7)',
-    color: 'white',
-    padding: '10px 20px',
-    borderRadius: '8px',
-    fontSize: '24px',
-    zIndex: 5000
-  });
-  document.body.appendChild(msg);
-  setTimeout(() => msg.remove(), 2000);
-}
-
-function spawnEnemyAtEdge() {
-  // If game hasn't started yet, treat elapsed as 0
-  const elapsed = gameStart ? (performance.now() - gameStart - totalPausedTime) / 1000 : 0;
-
-  let multiplier = 1;
-  if (elapsed >= 300) multiplier = 10;
-  else if (elapsed >= 60) multiplier = 3;
-  else if (elapsed >= 30) multiplier = 2;
-
-  for (let i = 0; i < multiplier; i++) enemies.push(createEnemy('normal'));
-
-  // Announcements at approx times (guarded by elapsed rounding)
-  if (elapsed >= 50 && elapsed < 50.2) showAnnouncement('Fast enemies incoming!');
-  if (elapsed >= 100 && elapsed < 100.2) showAnnouncement('Heavy enemies incoming!');
-
-  if (elapsed >= 50) enemiesFast.push(createEnemy('fast'));
-  if (elapsed >= 100) {
-    // spawn some slow enemies over time but avoid runaway creation
-    const intervals = Math.floor((elapsed - 100) / 100) + 1;
-    while (enemiesSlow.length < intervals) {
-      enemiesSlow.push(createEnemy('slow'));
-      lastGreenSpawn = elapsed;
-    }
-  }
-}
-
-// ===============================
-// 🧍 Player & Enemy Movement
-// ===============================
-function updatePlayer() {
-  player.x += player.dx;
-  player.y += player.dy;
-  player.x = Math.max(0, Math.min(canvas.width - player.width, player.x));
-  player.y = Math.max(0, Math.min(canvas.height - player.height, player.y));
-}
-
-function moveEnemies(list) {
-  for (const e of list) {
-    const dx = (player.x + player.width / 2) - (e.x + e.width / 2);
-    const dy = (player.y + player.height / 2) - (e.y + e.height / 2);
-    const dist = Math.hypot(dx, dy) || 1;
-    e.x += (dx / dist) * e.speed;
-    e.y += (dy / dist) * e.speed;
-    e.x = Math.max(-100, Math.min(canvas.width + 100 - e.width, e.x));
-    e.y = Math.max(-100, Math.min(canvas.height + 100 - e.height, e.y));
-  }
-}
-
-function rectsOverlap(a, b) {
-  return !(a.x + a.width < b.x || a.x > b.x + b.width || a.y + a.height < b.y || a.y > b.y + b.height);
-}
-
-function checkCollisions() {
-  const all = [...enemies, ...enemiesFast, ...enemiesSlow];
-  return all.some(e => rectsOverlap(player, e));
-}
-
 // ===============================
 // 💰 Coins
 // ===============================
+async function playerGotCoin(username, amount = 1) {
+  try {
+    const res = await fetch("/api/coins/add", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ username, coins: amount })
+    });
+    const data = await res.json();
+    if (data.success) {
+      console.log(`💰 Added ${amount} coin(s). New total: ${data.coins}`);
+      localStorage.setItem("COINS", data.coins);
+    } else {
+      console.warn("❌ Coin add failed:", data);
+    }
+  } catch (err) {
+    console.error("🚨 API Error adding coin:", err);
+  }
+}
+
+// Called when focus returns (refreshes shop coin display externally)
+window.addEventListener("focus", () => {
+  const username = localStorage.getItem("USERNAME") || "Anonymous";
+  if (typeof updateCoinDisplay === "function") updateCoinDisplay(username);
+});
+
 function createCoin() {
   const x = Math.random() * (canvas.width - 10) + 5;
   const y = Math.random() * (canvas.height - 10) + 5;
@@ -206,19 +157,87 @@ function checkCoinCollisions() {
       coins.splice(i, 1);
       coinCount++;
       showAnnouncement(`+1 Coin (Total: ${coinCount})`);
-
-      // Save coins to backend
-      fetch("/api/coins", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ username: PLAYER_NAME, coins: 1 })
-      }).catch(err => console.error("Failed to save coin:", err));
+      playerGotCoin(PLAYER_NAME, 1);
     }
   }
 }
 
 // ===============================
-// ⚡ Powerups & Invincibility
+// ✨ Announcements
+// ===============================
+function showAnnouncement(text) {
+  const msg = document.createElement('div');
+  msg.textContent = text;
+  Object.assign(msg.style, {
+    position: 'absolute',
+    top: '40%',
+    left: '50%',
+    transform: 'translate(-50%, -50%)',
+    background: 'rgba(0,0,0,0.7)',
+    color: 'white',
+    padding: '10px 20px',
+    borderRadius: '8px',
+    fontSize: '24px',
+    zIndex: 5000
+  });
+  document.body.appendChild(msg);
+  setTimeout(() => msg.remove(), 2000);
+}
+
+// ===============================
+// ⚙️ Enemy Behavior
+// ===============================
+function spawnEnemyAtEdge() {
+  const elapsed = gameStart ? (performance.now() - gameStart - totalPausedTime) / 1000 : 0;
+  let multiplier = 1;
+  if (elapsed >= 300) multiplier = 10;
+  else if (elapsed >= 60) multiplier = 3;
+  else if (elapsed >= 30) multiplier = 2;
+
+  for (let i = 0; i < multiplier; i++) enemies.push(createEnemy('normal'));
+
+  if (elapsed >= 50 && elapsed < 50.2) showAnnouncement('Fast enemies incoming!');
+  if (elapsed >= 100 && elapsed < 100.2) showAnnouncement('Heavy enemies incoming!');
+
+  if (elapsed >= 50) enemiesFast.push(createEnemy('fast'));
+  if (elapsed >= 100) {
+    const intervals = Math.floor((elapsed - 100) / 100) + 1;
+    while (enemiesSlow.length < intervals) {
+      enemiesSlow.push(createEnemy('slow'));
+      lastGreenSpawn = elapsed;
+    }
+  }
+}
+
+// ===============================
+// 🧍 Movement & Collision
+// ===============================
+function updatePlayer() {
+  player.x = Math.max(0, Math.min(canvas.width - player.width, player.x + player.dx));
+  player.y = Math.max(0, Math.min(canvas.height - player.height, player.y + player.dy));
+}
+
+function moveEnemies(list) {
+  for (const e of list) {
+    const dx = (player.x + player.width / 2) - (e.x + e.width / 2);
+    const dy = (player.y + player.height / 2) - (e.y + e.height / 2);
+    const dist = Math.hypot(dx, dy) || 1;
+    e.x += (dx / dist) * e.speed;
+    e.y += (dy / dist) * e.speed;
+  }
+}
+
+function rectsOverlap(a, b) {
+  return !(a.x + a.width < b.x || a.x > b.x + b.width || a.y + a.height < b.y || a.y > b.y + b.height);
+}
+
+function checkCollisions() {
+  const all = [...enemies, ...enemiesFast, ...enemiesSlow];
+  return all.some(e => rectsOverlap(player, e));
+}
+
+// ===============================
+// ⚡ Powerups
 // ===============================
 function createPowerup(type) {
   const x = Math.random() * (canvas.width - 30);
@@ -243,17 +262,14 @@ function pickPowerupType() {
 
 function spawnPowerup() {
   if (gameOver || paused || !gameStart) return;
-  const chance = Math.random();
-  if (chance > getPowerupSpawnChance()) return;
+  if (Math.random() > getPowerupSpawnChance()) return;
   powerups.push(createPowerup(pickPowerupType()));
 }
 
 function scheduleNextPowerup() {
   if (gameOver || paused) return;
   const elapsed = gameStart ? (performance.now() - gameStart - totalPausedTime) / 1000 : 0;
-  let baseDelay = 25000;
-  if (elapsed > 180) baseDelay = 15000;
-  else if (elapsed > 60) baseDelay = 20000;
+  let baseDelay = elapsed > 180 ? 15000 : elapsed > 60 ? 20000 : 25000;
   spawnPowerup();
   setTimeout(scheduleNextPowerup, baseDelay + Math.random() * 5000);
 }
@@ -283,10 +299,7 @@ function checkPowerupCollisions() {
         shieldActive = true;
         showAnnouncement('Shield Activated!');
       } else if (p.type === 'bomb') {
-        // Clear enemies
-        enemies.length = 0;
-        enemiesFast.length = 0;
-        enemiesSlow.length = 0;
+        enemies.length = enemiesFast.length = enemiesSlow.length = 0;
         showAnnouncement('BOOM! Enemies Cleared!');
       }
       powerups.splice(i, 1);
@@ -294,20 +307,9 @@ function checkPowerupCollisions() {
   }
 }
 
-function drawPowerups() {
-  for (const p of powerups) {
-    const scale = 1 + Math.sin(p.pulse) * 0.2;
-    ctx.beginPath();
-    ctx.arc(p.x, p.y, p.radius * scale, 0, Math.PI * 2);
-    ctx.lineWidth = 3;
-    ctx.strokeStyle =
-      p.type === 'shield'
-        ? `rgba(173, 216, 230, ${p.opacity})`
-        : `rgba(255, 165, 0, ${p.opacity})`;
-    ctx.stroke();
-  }
-}
-
+// ===============================
+// 🧠 Invincibility
+// ===============================
 function startInvincibility(duration) {
   clearTimeout(invincibleTimer);
   invincible = true;
@@ -330,7 +332,7 @@ function draw() {
   ctx.clearRect(0, 0, canvas.width, canvas.height);
 
   // Player
-  if (playerSkinImg && playerSkinImg.complete)
+  if (playerSkinImg?.complete)
     ctx.drawImage(playerSkinImg, player.x, player.y, player.width, player.height);
   else {
     ctx.fillStyle = 'blue';
@@ -340,7 +342,7 @@ function draw() {
   // Enemies
   for (const list of [enemies, enemiesFast, enemiesSlow]) {
     for (const e of list) {
-      if (enemySkinImg && enemySkinImg.complete)
+      if (enemySkinImg?.complete)
         ctx.drawImage(enemySkinImg, e.x, e.y, e.width, e.height);
       else {
         ctx.fillStyle = e.color;
@@ -360,7 +362,18 @@ function draw() {
     ctx.stroke();
   }
 
-  drawPowerups();
+  // Powerups
+  for (const p of powerups) {
+    const scale = 1 + Math.sin(p.pulse) * 0.2;
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, p.radius * scale, 0, Math.PI * 2);
+    ctx.lineWidth = 3;
+    ctx.strokeStyle =
+      p.type === 'shield'
+        ? `rgba(173, 216, 230, ${p.opacity})`
+        : `rgba(255, 165, 0, ${p.opacity})`;
+    ctx.stroke();
+  }
 
   // Shield
   if (shieldActive) {
@@ -377,7 +390,7 @@ function updateHud() {
   const coinEl = document.getElementById('coinCounter');
   if (timerEl) {
     const t = gameOver ? survivalTime : (gameStart ? (performance.now() - gameStart - totalPausedTime) / 1000 : 0);
-    timerEl.textContent = t.toFixed(2) + 's';
+    timerEl.textContent = `${t.toFixed(2)}s`;
   }
   if (coinEl) coinEl.textContent = `Coins: ${coinCount}`;
 }
@@ -407,10 +420,11 @@ function showGameOverOverlay() {
 }
 
 // ===============================
-// 🔁 Game Loop & Controls
+// 🔁 Game Loop
 // ===============================
 function gameLoop() {
   if (!gameStart) gameStart = performance.now();
+
   if (!gameOver && !paused) {
     updatePlayer();
     updatePowerups();
@@ -423,7 +437,7 @@ function gameLoop() {
 
     if (checkCollisions()) {
       if (invincible) {
-        // ignore
+        // Ignore
       } else if (shieldActive) {
         shieldActive = false;
         invincible = true;
@@ -448,29 +462,29 @@ function gameLoop() {
 // ===============================
 // 🎮 Controls
 // ===============================
-window.addEventListener('keydown', (e) => {
+window.addEventListener('keydown', e => {
   if (['ArrowUp','ArrowDown','ArrowLeft','ArrowRight','w','a','s','d','Escape'].includes(e.key))
     e.preventDefault();
 });
 
-canvas.addEventListener('keydown', (e) => {
+canvas.addEventListener('keydown', e => {
   if (gameOver) return;
   switch (e.key) {
     case 'ArrowRight': case 'd': player.dx = player.speed; break;
     case 'ArrowLeft': case 'a': player.dx = -player.speed; break;
     case 'ArrowUp': case 'w': player.dy = -player.speed; break;
     case 'ArrowDown': case 's': player.dy = player.speed; break;
-    case 'Escape': e.preventDefault(); togglePause(); break;
+    case 'Escape': togglePause(); break;
   }
 });
 
-canvas.addEventListener('keyup', (e) => {
+canvas.addEventListener('keyup', e => {
   if (['ArrowRight','ArrowLeft','d','a'].includes(e.key)) player.dx = 0;
   if (['ArrowUp','ArrowDown','w','s'].includes(e.key)) player.dy = 0;
 });
 
 // ===============================
-// ⏸️ Pause & Restart
+// ⏸️ Pause & Reset
 // ===============================
 function togglePause() {
   if (gameOver) return;
@@ -490,33 +504,42 @@ function togglePause() {
 async function resetGame() {
   enemies.length = enemiesFast.length = enemiesSlow.length = powerups.length = coins.length = 0;
   coinCount = 0;
-  player.x = canvas.width / 2 - player.width / 2;
-  player.y = canvas.height / 2 - player.height / 2;
-  player.dx = player.dy = 0;
+  Object.assign(player, {
+    x: canvas.width / 2 - player.width / 2,
+    y: canvas.height / 2 - player.height / 2,
+    dx: 0,
+    dy: 0
+  });
   gameStart = performance.now();
   gameOver = false;
   paused = false;
   totalPausedTime = 0;
+  invincible = false;
   lastGreenSpawn = 0;
   pauseStart = 0;
-  invincible = false;
   await loadEquippedSkins();
   spawnEnemyAtEdge();
   spawnIntervalId = setInterval(spawnEnemyAtEdge, 10000);
   rafId = requestAnimationFrame(gameLoop);
   canvas.focus();
+    // Add button behavior //
+  document.getElementById('playAgainOverlay').addEventListener('click', () => {
+    shade.remove();
+    box.remove();
+    resetGame();
+  });
 }
+
 
 // ===============================
 // 📡 Score Sending
 // ===============================
 async function sendScore(time) {
   try {
-    const usernameToSend = PLAYER_NAME || 'Anonymous';
     const res = await fetch('/scores', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ username: usernameToSend, survival_time: time })
+      body: JSON.stringify({ username: PLAYER_NAME, survival_time: time })
     });
     if (!res.ok) console.error('Failed to send score');
   } catch (err) {

@@ -10,13 +10,18 @@
   <!-- Shop-specific Styles -->
   <link rel="stylesheet" href="{{ url_for('static', filename='style/shop.css') }}">
 </head>
-<body>
 
+<body class="shop-page">
   <!-- Shared Header -->
   <header class="site-header">
     <div class="site-title">Aplegoetia</div>
     <div class="header-controls">
-      <div id="profileDisplay" class="profile-display" title="Click to change name"></div>
+      <div id="profileDisplay" class="profile-display" title="Click to change username"></div>
+
+      <div class="coin-display">
+        🪙 Coins: <span id="coinCountHeader">0</span>
+      </div>
+
       <div class="dropdown">
         <button class="dropdown-btn">Menu</button>
         <div class="dropdown-content">
@@ -30,14 +35,18 @@
   </header>
 
   <!-- Main Content -->
-  <main class="shop-container">
-    <h1>In-Game Shop</h1>
+  <main id="shopApp">
+    <header>
+      <h1>In-Game Shop</h1>
+    </header>
 
-    <section class="shop-coins">
+    <!-- Player balance -->
+    <section class="shop-balance">
       <h2>Your Balance</h2>
-      <div id="coinDisplay">💰 <span id="coinCount">0</span> coins</div>
+      <div id="coinDisplay">💰 <span id="coinCountMain">0</span> coins</div>
     </section>
 
+    <!-- Shop items -->
     <section class="shop-items">
       <h2>Available Items</h2>
       <div class="shop-grid">
@@ -55,7 +64,16 @@
     </section>
   </main>
 
-  <!-- JS (you can expand it later for buying/equipping logic) -->
+  <!-- Scripts -->
   <script src="{{ url_for('static', filename='js/shop.js') }}"></script>
+  <script>
+    // Keep both coin displays in sync
+    function syncCoinDisplays(amount) {
+      const headerEl = document.getElementById("coinCountHeader");
+      const mainEl = document.getElementById("coinCountMain");
+      if (headerEl) headerEl.textContent = amount;
+      if (mainEl) mainEl.textContent = amount;
+    }
+  </script>
 </body>
 </html>

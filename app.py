@@ -10,8 +10,8 @@ app = Flask(__name__)
 basedir = os.path.abspath(os.path.dirname(__file__))
 app.config['SQLALCHEMY_DATABASE_URI'] = f'sqlite:///{os.path.join(basedir, "game.db")}'
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
-db = SQLAlchemy(app)
 app.config['ADMIN_TOKEN'] = os.environ.get('ADMIN_TOKEN', '666')
+db = SQLAlchemy(app)
 
 # -------------------------------
 # Database Models
@@ -104,10 +104,13 @@ def coins():
     if not user:
         return jsonify({'error': 'User creation failed'}), 500
 
+    # POST is still allowed (for backward compatibility)
     if request.method == 'POST':
         data = request.get_json(silent=True) or {}
         coins_to_add = int(data.get('coins', 0))
         user.coins += coins_to_add
+        if user.coins < 0:
+            user.coins = 0
         try:
             db.session.commit()
         except Exception:
@@ -115,7 +118,37 @@ def coins():
             return jsonify({'error': 'Failed to update coins'}), 500
         return jsonify({'username': user.username, 'coins': user.coins})
 
+    # Default: GET
     return jsonify({'username': user.username, 'coins': user.coins})
+
+@app.route("/api/coins/add", methods=["POST"])
+def add_coins():
+    """
+    Adds coins to the user's account atomically.
+    Called when the player collects coins in the game.
+    """
+    data = request.get_json(silent=True) or {}
+    username = data.get("username")
+    coins_to_add = int(data.get("coins", 0))
+    if not username or coins_to_add <= 0:
+        return jsonify({"error": "Invalid request"}), 400
+
+    user = get_or_create_user(username)
+    if not user:
+        return jsonify({"error": "User not found"}), 404
+
+    try:
+        User.query.filter_by(username=username).update(
+            {User.coins: User.coins + coins_to_add}
+        )
+        db.session.commit()
+        user = User.query.filter_by(username=username).first()
+        if user.coins < 0:
+            user.coins = 0
+        return jsonify({"success": True, "username": user.username, "coins": user.coins})
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({"error": "Database error", "details": str(e)}), 500
 
 # -------------------------------
 # API — Shop
@@ -145,6 +178,7 @@ def shop_user():
         if 'player_skin' in data: user.player_skin = data['player_skin']
         if 'enemy_skin' in data: user.enemy_skin = data['enemy_skin']
         if 'coins' in data: user.coins = int(data['coins'])
+        if user.coins < 0: user.coins = 0
         try:
             db.session.commit()
         except Exception:
@@ -178,25 +212,22 @@ def shop_buy():
         return jsonify({'error': 'Missing username or item_key'}), 400
 
     user = get_or_create_user(username)
-    if not user:
-        return jsonify({'error': 'User creation failed'}), 500
-
     item = ShopItem.query.filter_by(key=item_key).first()
-    if not item: return jsonify({'error': 'Item not found'}), 404
-
+    if not item:
+        return jsonify({'error': 'Item not found'}), 404
     if user.coins < item.price:
         return jsonify({'error': 'Not enough coins'}), 400
     if OwnedItem.query.filter_by(username=username, item_key=item_key).first():
         return jsonify({'error': 'Already owned'}), 400
 
-    user.coins -= item.price
-    db.session.add(OwnedItem(username=username, item_key=item_key))
     try:
-        db.session.commit()
-    except Exception:
+        with db.session.begin():
+            user.coins = max(0, user.coins - item.price)
+            db.session.add(OwnedItem(username=username, item_key=item_key))
+        return jsonify({'success': True, 'coins': user.coins})
+    except Exception as e:
         db.session.rollback()
-        return jsonify({'error': 'Purchase failed'}), 500
-    return jsonify({'success': True, 'coins': user.coins})
+        return jsonify({'error': 'Purchase failed', 'details': str(e)}), 500
 
 @app.route('/api/shop/equip', methods=['POST'])
 def shop_equip():
@@ -206,9 +237,6 @@ def shop_equip():
         return jsonify({'error': 'Missing username or item_key'}), 400
 
     user = get_or_create_user(username)
-    if not user:
-        return jsonify({'error': 'User creation failed'}), 500
-
     item = ShopItem.query.filter_by(key=item_key).first()
     owned = OwnedItem.query.filter_by(username=username, item_key=item_key).first()
     if not item:
@@ -228,6 +256,20 @@ def shop_equip():
         return jsonify({'error': 'Equip failed'}), 500
     return jsonify({'success': True})
 
+@app.route('/api/shop/sync', methods=['GET'])
+def shop_sync():
+    """Optional unified endpoint for skin + coin sync."""
+    username = request.args.get('username')
+    if not username:
+        return jsonify({'error': 'Missing username'}), 400
+    user = get_or_create_user(username)
+    return jsonify({
+        'username': user.username,
+        'coins': user.coins,
+        'player_skin': user.player_skin,
+        'enemy_skin': user.enemy_skin
+    })
+
 # -------------------------------
 # API — Scores / Leaderboard
 # -------------------------------
@@ -240,16 +282,8 @@ def scores():
         if survival_time <= 0:
             return jsonify({'error': 'Invalid survival time'}), 400
 
-        # Save the score
         s = Score(username=username, survival_time=survival_time)
         db.session.add(s)
-
-        # Update personal best
-        user_best = Score.query.filter_by(username=username).order_by(Score.survival_time.desc()).first()
-        if not user_best or survival_time > user_best.survival_time:
-            # personal best is automatically the highest survival_time per user
-            pass
-
         try:
             db.session.commit()
         except Exception:
@@ -258,7 +292,6 @@ def scores():
 
         return jsonify({'id': s.id, 'username': s.username, 'survival_time': s.survival_time}), 201
 
-    # Return top 10 global scores
     scores = Score.query.order_by(Score.survival_time.desc()).limit(10).all()
     return jsonify([{
         'id': s.id,
@@ -267,15 +300,11 @@ def scores():
         'created_at': s.created_at.isoformat()
     } for s in scores])
 
-# -------------------------------
-# Personal Best — Returns user's best score only
-# -------------------------------
 @app.route('/api/personal_best', methods=['GET'])
 def personal_best():
     username = request.args.get('username')
     if not username:
         return jsonify({'error': 'Missing username'}), 400
-
     best = Score.query.filter_by(username=username).order_by(Score.survival_time.desc()).first()
     if not best:
         return jsonify({'username': username, 'personal_best': 0})
@@ -309,19 +338,14 @@ def messages():
         'created_at': m.created_at.isoformat()
     } for m in msgs])
 
-# -------------------------------
-# API — Delete Message (Admin)
-# -------------------------------
 @app.route('/messages/<int:message_id>', methods=['DELETE'])
 def delete_message(message_id):
     m = Message.query.get(message_id)
     if not m:
         return jsonify({'error': 'Not found'}), 404
-
     token = request.headers.get('X-Admin-Token', '')
     if token != app.config['ADMIN_TOKEN']:
         return jsonify({'error': 'forbidden'}), 403
-
     db.session.delete(m)
     try:
         db.session.commit()
@@ -351,23 +375,3 @@ def seed_shop():
 # -------------------------------
 if __name__ == "__main__":
     app.run(debug=True)
-@app.route("/api/coins/add", methods=["POST"])
-def add_coins():
-    data = request.get_json(silent=True) or {}
-    username = data.get("username")
-    coins_to_add = int(data.get("coins", 0))
-    if not username or coins_to_add <= 0:
-        return jsonify({"error": "Invalid request"}), 400
-
-    user = get_or_create_user(username)
-    if not user:
-        return jsonify({"error": "User creation failed"}), 500
-
-    user.coins += coins_to_add
-    try:
-        db.session.commit()
-    except Exception:
-        db.session.rollback()
-        return jsonify({"error": "Failed to update coins"}), 500
-
-    return jsonify({"success": True, "coins": user.coins})

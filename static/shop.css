@@ -318,4 +318,11 @@ button:disabled {
   10%, 90% { opacity: 1; transform: translate(-50%, 0); }
   100% { opacity: 0; transform: translate(-50%, -20px); }
 }
+.coin-display {
+  font-weight: bold;
+  color: gold;
+  text-align: right;
+  margin-right: 20px;
+  font-size: 1.1rem;
+}
 
